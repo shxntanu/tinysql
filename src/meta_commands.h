@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <string.h>
 
 typedef enum {
   META_COMMAND_SUCCESS,
