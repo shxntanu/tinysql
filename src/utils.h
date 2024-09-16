@@ -66,7 +66,7 @@ Table *new_table() {
 }
 
 void free_table(Table *table) {
-  for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
+  for (uint32_t i = 0; table->pages[i]; i++) {
     free(table->pages[i]);
   }
   free(table);
