@@ -86,7 +86,7 @@ void *row_slot(Table *table, uint32_t row_num) {
   return page + byte_offset;
 }
 
-void print_prompt() { printf("db > "); }
+void print_prompt() { printf("tinysql > "); }
 
 void print_row(Row *row) {
   printf("(%d, %s, %s)\n", row->id, row->username, row->email);
