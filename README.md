@@ -7,12 +7,14 @@ Make sure you have CMake installed. Clone the repository.
 Run CMake
 
 ```bash
-cmake
+cmake .
 ```
 
-Build and run the bloom test.
+Build and run the binary.
 
 ```bash
+cd build
+
 make
-./bloom
+./tinysql
 ```
