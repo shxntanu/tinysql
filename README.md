@@ -13,8 +13,6 @@ cmake .
 Build and run the binary.
 
 ```bash
-cd build
-
 make
 ./tinysql
 ```
