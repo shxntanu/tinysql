@@ -1,17 +1,5 @@
+#include "input_buffer.h"
 #include "meta_commands.h"
-
-PrepareResult prepare_statement(InputBuffer *input_buffer,
-                                Statement *statement) {
-  if (strncmp(input_buffer->buffer, "insert", 6) == 0) {
-    return prepare_insert(input_buffer, statement);
-  }
-  if (strcmp(input_buffer->buffer, "select") == 0) {
-    statement->type = STATEMENT_SELECT;
-    return PREPARE_SUCCESS;
-  }
-
-  return PREPARE_UNRECOGNIZED_STATEMENT;
-}
 
 PrepareResult prepare_insert(InputBuffer *input_buffer, Statement *statement) {
   statement->type = STATEMENT_INSERT;
@@ -42,6 +30,18 @@ PrepareResult prepare_insert(InputBuffer *input_buffer, Statement *statement) {
   strcpy(statement->row_to_insert.email, email);
 
   return PREPARE_SUCCESS;
+}
+PrepareResult prepare_statement(InputBuffer *input_buffer,
+                                Statement *statement) {
+  if (strncmp(input_buffer->buffer, "insert", 6) == 0) {
+    return prepare_insert(input_buffer, statement);
+  }
+  if (strcmp(input_buffer->buffer, "select") == 0) {
+    statement->type = STATEMENT_SELECT;
+    return PREPARE_SUCCESS;
+  }
+
+  return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
 ExecuteResult execute_insert(Statement *statement, Table *table) {
