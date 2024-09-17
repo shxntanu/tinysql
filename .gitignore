@@ -1,6 +1,5 @@
 /vcpkg_installed
 /vcpkg
-/.vscode
 /build
 /CMakeFiles
 
