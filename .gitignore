@@ -4,6 +4,8 @@
 /build
 /CMakeFiles
 
+tinysql
+
 CMakeCache.txt
 cmake_install.cmake
 Makefile
