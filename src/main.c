@@ -6,6 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define size_of_attribute(Struct, Attribute) sizeof(((Struct *)0)->Attribute)
+
 struct InputBuffer_t {
   char *buffer;
   size_t buffer_length;
@@ -36,6 +38,7 @@ typedef enum StatementType_t StatementType;
 
 const uint32_t COLUMN_USERNAME_SIZE = 32;
 const uint32_t COLUMN_EMAIL_SIZE = 255;
+
 struct Row_t {
   uint32_t id;
   char username[COLUMN_USERNAME_SIZE + 1];
@@ -48,8 +51,6 @@ struct Statement_t {
   Row row_to_insert; // only used by insert statement
 };
 typedef struct Statement_t Statement;
-
-#define size_of_attribute(Struct, Attribute) sizeof(((Struct *)0)->Attribute)
 
 const uint32_t ID_SIZE = size_of_attribute(Row, id);
 const uint32_t USERNAME_SIZE = size_of_attribute(Row, username);
@@ -76,6 +77,38 @@ struct Table_t {
   uint32_t num_rows;
 };
 typedef struct Table_t Table;
+
+struct Cursor_t {
+  Table *table;
+  uint32_t row_num;
+  bool end_of_table; // Indicates a position one past the last element
+};
+typedef struct Cursor_t Cursor;
+
+Cursor *table_start(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = 0;
+  cursor->end_of_table = (table->num_rows == 0);
+
+  return cursor;
+}
+
+Cursor *table_end(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->row_num = table->num_rows;
+  cursor->end_of_table = (table->num_rows == 0);
+
+  return cursor;
+}
+
+void cursor_advance(Cursor *cursor) {
+  cursor->row_num++;
+  if (cursor->row_num >= cursor->table->num_rows) {
+    cursor->end_of_table = true;
+  }
+}
 
 void print_row(Row *row) {
   printf("(%d, %s, %s)\n", row->id, row->username, row->email);
@@ -125,9 +158,10 @@ void *get_page(Pager *pager, uint32_t page_num) {
   return pager->pages[page_num];
 }
 
-void *row_slot(Table *table, uint32_t row_num) {
+void *cursor_value(Cursor *cursor) {
+  uint32_t row_num = cursor->row_num;
   uint32_t page_num = row_num / ROWS_PER_PAGE;
-  void *page = get_page(table->pager, page_num);
+  void *page = get_page(cursor->table->pager, page_num);
   uint32_t row_offset = row_num % ROWS_PER_PAGE;
   uint32_t byte_offset = row_offset * ROW_SIZE;
   return page + byte_offset;
@@ -231,7 +265,6 @@ void db_close(Table *table) {
   }
 
   // There may be a partial page to write to the end of the file
-  // This should not be needed after we switch to a B-tree
   uint32_t num_additional_rows = table->num_rows % ROWS_PER_PAGE;
   if (num_additional_rows > 0) {
     uint32_t page_num = num_full_pages;
@@ -315,19 +348,24 @@ ExecuteResult execute_insert(Statement *statement, Table *table) {
   }
 
   Row *row_to_insert = &(statement->row_to_insert);
+  Cursor *cursor = table_end(table);
 
-  serialize_row(row_to_insert, row_slot(table, table->num_rows));
+  serialize_row(row_to_insert, cursor_value(cursor));
   table->num_rows += 1;
 
   return EXECUTE_SUCCESS;
 }
 
 ExecuteResult execute_select(Statement *statement, Table *table) {
-  Row row;
-  for (uint32_t i = 0; i < table->num_rows; i++) {
-    deserialize_row(row_slot(table, i), &row);
+  Cursor *cursor = table_start(table);
+  Row *row;
+  while (!(cursor->end_of_table)) {
+    deserialize_row(cursor_value(table), &row);
     print_row(&row);
+    cursor_advance(cursor);
   }
+
+  free(cursor);
   return EXECUTE_SUCCESS;
 }
 
