@@ -36,6 +36,9 @@ typedef enum PrepareResult_t PrepareResult;
 enum StatementType_t { STATEMENT_INSERT, STATEMENT_SELECT };
 typedef enum StatementType_t StatementType;
 
+enum NodeType_t { NODE_INTERNAL, NODE_LEAF };
+typedef enum NodeType_t NodeType;
+
 const uint32_t COLUMN_USERNAME_SIZE = 32;
 const uint32_t COLUMN_EMAIL_SIZE = 255;
 
@@ -62,19 +65,92 @@ const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
 
 const uint32_t PAGE_SIZE = 4096;
 const uint32_t TABLE_MAX_PAGES = 100;
-const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
+
+/**
+ * Nodes need to store some metadata in a header at the beginning of the page.
+ * Every node will store what type of node it is, whether or not it is the root
+ * node, and a pointer to its parent (to allow finding a node’s siblings). We
+ * define constants for the size and offset of every header field.
+ *
+ * Little space inefficient to use an entire byte per boolean value in the
+ * header, but this makes it easier to write code to access those values.
+ * ------------------------------------------------------------
+ * |            |           |                                 |
+ * | Node Type  | Is Root?  |     Parent Pointer (uint32)     |
+ * |  (uint8)   |  (uint8)  |                                 |
+ * |            |           |                                 |
+ * ------------------------------------------------------------
+ */
+
+const uint32_t NODE_TYPE_SIZE = sizeof(uint8_t);
+const uint32_t NODE_TYPE_OFFSET = 0;
+const uint32_t IS_ROOT_SIZE = sizeof(uint8_t);
+const uint32_t IS_ROOT_OFFSET = NODE_TYPE_SIZE;
+const uint32_t PARENT_POINTER_SIZE = sizeof(uint32_t);
+const uint32_t PARENT_POINTER_OFFSET = IS_ROOT_OFFSET + IS_ROOT_SIZE;
+const uint32_t COMMON_NODE_HEADER_SIZE =
+    NODE_TYPE_SIZE + IS_ROOT_SIZE + PARENT_POINTER_SIZE;
+
+/**
+ * In addition to these common header fields, leaf nodes need to store how many
+ * “cells” they contain. A cell is a key/value pair.
+ * -------------------------------------------------
+ * | Common Node Header | Number of cells (uint32) |
+ * -------------------------------------------------
+ */
+
+const uint32_t LEAF_NODE_NUM_CELLS_SIZE = sizeof(uint32_t);
+const uint32_t LEAF_NODE_NUM_CELLS_OFFSET = COMMON_NODE_HEADER_SIZE;
+const uint32_t LEAF_NODE_HEADER_SIZE =
+    COMMON_NODE_HEADER_SIZE + LEAF_NODE_NUM_CELLS_SIZE;
+
+/**
+ * The body of a leaf node is an array of cells. Each cell is a key followed by
+ * a value (a serialized row).
+ */
+
+const uint32_t LEAF_NODE_KEY_SIZE = sizeof(uint32_t);
+const uint32_t LEAF_NODE_KEY_OFFSET = 0;
+const uint32_t LEAF_NODE_VALUE_SIZE = ROW_SIZE;
+const uint32_t LEAF_NODE_VALUE_OFFSET =
+    LEAF_NODE_KEY_OFFSET + LEAF_NODE_KEY_SIZE;
+const uint32_t LEAF_NODE_CELL_SIZE = LEAF_NODE_KEY_SIZE + LEAF_NODE_VALUE_SIZE;
+const uint32_t LEAF_NODE_SPACE_FOR_CELLS = PAGE_SIZE - LEAF_NODE_HEADER_SIZE;
+const uint32_t LEAF_NODE_MAX_CELLS =
+    LEAF_NODE_SPACE_FOR_CELLS / LEAF_NODE_CELL_SIZE;
+
+// These methods return a pointer to the value in question, so they can be used
+// both as a getter and a setter.
+
+uint32_t *leaf_node_num_cells(void *node) {
+  return node + LEAF_NODE_NUM_CELLS_OFFSET;
+}
+
+void *leaf_node_cell(void *node, uint32_t cell_num) {
+  return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
+}
+
+void *leaf_node_key(void *node, uint32_t cell_num) {
+  return leaf_node_cell(node, cell_num);
+}
+
+void *leaf_node_value(void *node, uint32_t cell_num) {
+  return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
+}
+
+void initialize_leaf_node(void *node) { *leaf_node_num_cells(node) = 0; }
 
 struct Pager_t {
   int file_descriptor;
   uint32_t file_length;
+  uint32_t num_pages;
   void *pages[TABLE_MAX_PAGES];
 };
 typedef struct Pager_t Pager;
 
 struct Table_t {
   Pager *pager;
-  uint32_t num_rows;
+  uint32_t root_page_num;
 };
 typedef struct Table_t Table;
 
@@ -153,6 +229,10 @@ void *get_page(Pager *pager, uint32_t page_num) {
     }
 
     pager->pages[page_num] = page;
+
+    if (page_num >= pager->num_pages) {
+      pager->num_pages = page_num + 1;
+    }
   }
 
   return pager->pages[page_num];
@@ -229,7 +309,7 @@ void read_input(InputBuffer *input_buffer) {
   input_buffer->buffer[bytes_read - 1] = 0;
 }
 
-void pager_flush(Pager *pager, uint32_t page_num, uint32_t size) {
+void pager_flush(Pager *pager, uint32_t page_num) {
   if (pager->pages[page_num] == NULL) {
     printf("Tried to flush null page\n");
     exit(EXIT_FAILURE);
@@ -243,7 +323,7 @@ void pager_flush(Pager *pager, uint32_t page_num, uint32_t size) {
   }
 
   ssize_t bytes_written =
-      write(pager->file_descriptor, pager->pages[page_num], size);
+      write(pager->file_descriptor, pager->pages[page_num], PAGE_SIZE);
 
   if (bytes_written == -1) {
     printf("Error writing: %d\n", errno);
@@ -253,26 +333,14 @@ void pager_flush(Pager *pager, uint32_t page_num, uint32_t size) {
 
 void db_close(Table *table) {
   Pager *pager = table->pager;
-  uint32_t num_full_pages = table->num_rows / ROWS_PER_PAGE;
 
-  for (uint32_t i = 0; i < num_full_pages; i++) {
+  for (uint32_t i = 0; i < pager->num_pages; i++) {
     if (pager->pages[i] == NULL) {
       continue;
     }
-    pager_flush(pager, i, PAGE_SIZE);
+    pager_flush(pager, i);
     free(pager->pages[i]);
     pager->pages[i] = NULL;
-  }
-
-  // There may be a partial page to write to the end of the file
-  uint32_t num_additional_rows = table->num_rows % ROWS_PER_PAGE;
-  if (num_additional_rows > 0) {
-    uint32_t page_num = num_full_pages;
-    if (pager->pages[page_num] != NULL) {
-      pager_flush(pager, page_num, num_additional_rows * ROW_SIZE);
-      free(pager->pages[page_num]);
-      pager->pages[page_num] = NULL;
-    }
   }
 
   int result = close(pager->file_descriptor);
