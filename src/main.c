@@ -76,8 +76,8 @@ const uint32_t TABLE_MAX_PAGES = 100;
  * header, but this makes it easier to write code to access those values.
  * ------------------------------------------------------------
  * |            |           |                                 |
- * | Node Type  | Is Root?  |     Parent Pointer (uint32)     |
- * |  (uint8)   |  (uint8)  |                                 |
+ * | Node Type  | Is Root?  |          Parent Pointer         |
+ * |  (uint8)   |  (uint8)  |             (uint32)            |
  * |            |           |                                 |
  * ------------------------------------------------------------
  */
@@ -122,22 +122,72 @@ const uint32_t LEAF_NODE_MAX_CELLS =
 // These methods return a pointer to the value in question, so they can be used
 // both as a getter and a setter.
 
+/**
+ * Returns a pointer to the number of cells in a leaf node.
+ *
+ * This function calculates the address of the number of cells in a leaf node
+ * by adding the offset for the number of cells to the base address of the node.
+ *
+ * @param node A pointer to the leaf node.
+ * @return A pointer to the number of cells in the leaf node.
+ */
 uint32_t *leaf_node_num_cells(void *node) {
   return node + LEAF_NODE_NUM_CELLS_OFFSET;
 }
 
+/**
+ * Returns a pointer to a specific cell in a leaf node.
+ *
+ * This function calculates the address of a specific cell in a leaf node
+ * by adding the header size and the offset for the cell number to the base
+ * address of the node.
+ *
+ * @param node A pointer to the leaf node.
+ * @param cell_num The index of the cell within the leaf node.
+ * @return A pointer to the specified cell in the leaf node.
+ */
 void *leaf_node_cell(void *node, uint32_t cell_num) {
   return node + LEAF_NODE_HEADER_SIZE + cell_num * LEAF_NODE_CELL_SIZE;
 }
 
+/**
+ * Returns a pointer to the key of a specific cell in a leaf node.
+ *
+ * This function calculates the address of the key of a specific cell in a leaf
+ * node by using the leaf_node_cell function to get the cell and returning the
+ * same pointer since the key is the first part of the cell.
+ *
+ * @param node A pointer to the leaf node.
+ * @param cell_num The index of the cell within the leaf node.
+ * @return A pointer to the key of the specified cell in the leaf node.
+ */
 void *leaf_node_key(void *node, uint32_t cell_num) {
   return leaf_node_cell(node, cell_num);
 }
 
+/**
+ * Returns a pointer to the value of a specific cell in a leaf node.
+ *
+ * This function calculates the address of the value of a specific cell in a
+ * leaf node by using the leaf_node_cell function to get the cell and adding the
+ * size of the key to the cell address.
+ *
+ * @param node A pointer to the leaf node.
+ * @param cell_num The index of the cell within the leaf node.
+ * @return A pointer to the value of the specified cell in the leaf node.
+ */
 void *leaf_node_value(void *node, uint32_t cell_num) {
   return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
+/**
+ * Initializes a leaf node by setting the number of cells to 0.
+ *
+ * This function sets the number of cells in a leaf node to 0, effectively
+ * initializing the node to an empty state.
+ *
+ * @param node A pointer to the leaf node.
+ */
 void initialize_leaf_node(void *node) { *leaf_node_num_cells(node) = 0; }
 
 struct Pager_t {
@@ -156,7 +206,8 @@ typedef struct Table_t Table;
 
 struct Cursor_t {
   Table *table;
-  uint32_t row_num;
+  uint32_t page_num;
+  uint32_t cell_num;
   bool end_of_table; // Indicates a position one past the last element
 };
 typedef struct Cursor_t Cursor;
@@ -164,8 +215,8 @@ typedef struct Cursor_t Cursor;
 Cursor *table_start(Table *table) {
   Cursor *cursor = malloc(sizeof(Cursor));
   cursor->table = table;
-  cursor->row_num = 0;
-  cursor->end_of_table = (table->num_rows == 0);
+  cursor->page_num = table->root_page_num;
+  cursor->cell_num = 0;
 
   return cursor;
 }
@@ -173,15 +224,22 @@ Cursor *table_start(Table *table) {
 Cursor *table_end(Table *table) {
   Cursor *cursor = malloc(sizeof(Cursor));
   cursor->table = table;
-  cursor->row_num = table->num_rows;
-  cursor->end_of_table = (table->num_rows == 0);
+  cursor->page_num = table->root_page_num;
+
+  void *root_node = get_page(table->pager, table->root_page_num);
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  cursor->cell_num = num_cells;
+  cursor->end_of_table = true;
 
   return cursor;
 }
 
 void cursor_advance(Cursor *cursor) {
-  cursor->row_num++;
-  if (cursor->row_num >= cursor->table->num_rows) {
+  uint32_t page_num = cursor->page_num;
+  void *node = get_page(cursor->table->pager, page_num);
+
+  cursor->cell_num++;
+  if (cursor->cell_num >= *leaf_node_num_cells(node)) {
     cursor->end_of_table = true;
   }
 }
@@ -239,12 +297,9 @@ void *get_page(Pager *pager, uint32_t page_num) {
 }
 
 void *cursor_value(Cursor *cursor) {
-  uint32_t row_num = cursor->row_num;
-  uint32_t page_num = row_num / ROWS_PER_PAGE;
+  uint32_t page_num = cursor->page_num;
   void *page = get_page(cursor->table->pager, page_num);
-  uint32_t row_offset = row_num % ROWS_PER_PAGE;
-  uint32_t byte_offset = row_offset * ROW_SIZE;
-  return page + byte_offset;
+  return leaf_node_value(page, page_num);
 }
 
 Pager *pager_open(const char *filename) {
@@ -265,6 +320,12 @@ Pager *pager_open(const char *filename) {
   Pager *pager = malloc(sizeof(Pager));
   pager->file_descriptor = fd;
   pager->file_length = file_length;
+  pager->num_pages = (file_length / PAGE_SIZE);
+
+  if (file_length % PAGE_SIZE != 0) {
+    printf("DB file is not a whole number of pages. Corrupt file.\n");
+    exit(EXIT_FAILURE);
+  }
 
   for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
     pager->pages[i] = NULL;
@@ -273,13 +334,22 @@ Pager *pager_open(const char *filename) {
   return pager;
 }
 
+/**
+ * When we open the database for the first time, the database file will be
+ * empty, so we initialize page 0 to be an empty leaf node (the root node)
+ */
 Table *db_open(const char *filename) {
   Pager *pager = pager_open(filename);
-  uint32_t num_rows = pager->file_length / ROW_SIZE;
 
   Table *table = malloc(sizeof(Table));
   table->pager = pager;
-  table->num_rows = num_rows;
+  table->root_page_num = 0;
+
+  if (pager->num_pages == 0) {
+    // New database file. Initialize page 0 as leaf node.
+    void *root_node = get_page(pager, 0);
+    initialize_leaf_node(root_node);
+  }
 
   return table;
 }
@@ -358,6 +428,47 @@ void db_close(Table *table) {
   free(pager);
 }
 
+/**
+ * Inserts a key-value pair into a leaf node of a B-tree.
+ *
+ * This function handles the insertion of a key-value pair into a leaf node.
+ * If the node is full, it prints an error message and exits. Node splitting
+ * is required but not implemented in this function.
+ *
+ * @param cursor A pointer to the Cursor structure, which indicates the position
+ *               in the table where the insertion should occur.
+ * @param key The key to be inserted into the leaf node.
+ * @param value A pointer to the Row structure containing the value to be
+ * inserted.
+ */
+void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value) {
+  void *node = get_page(cursor->table->pager, cursor->page_num);
+
+  uint32_t num_cells = *leaf_node_num_cells(node);
+
+  // Node full
+  if (num_cells >= LEAF_NODE_MAX_CELLS) {
+    printf("Need to implement node splitting.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /**
+   * If the cursor's cell number is less than the current number of cells, it
+   * means the new cell needs to be inserted in the middle. We shift the
+   * existing cells to the right to make room for the new cell.
+   */
+  if (cursor->cell_num < num_cells) {
+    for (uint32_t i = num_cells; i > cursor->cell_num; i--) {
+      memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i - 1),
+             LEAF_NODE_CELL_SIZE);
+    }
+  }
+
+  *(leaf_node_num_cells(node)) += 1;
+  *((uint32_t *)leaf_node_key(node, cursor->cell_num)) = key;
+  serialize_row(value, leaf_node_value(node, cursor->cell_num));
+}
+
 MetaCommandResult do_meta_command(InputBuffer *input_buffer, Table *table) {
   if (strcmp(input_buffer->buffer, ".exit") == 0) {
     db_close(table);
@@ -411,15 +522,15 @@ PrepareResult prepare_statement(InputBuffer *input_buffer,
 }
 
 ExecuteResult execute_insert(Statement *statement, Table *table) {
-  if (table->num_rows >= TABLE_MAX_ROWS) {
+  void *node = get_page(table->pager, table->root_page_num);
+  if (*(leaf_node_num_cells(node)) >= LEAF_NODE_MAX_CELLS) {
     return EXECUTE_TABLE_FULL;
   }
 
   Row *row_to_insert = &(statement->row_to_insert);
   Cursor *cursor = table_end(table);
 
-  serialize_row(row_to_insert, cursor_value(cursor));
-  table->num_rows += 1;
+  leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
 
   return EXECUTE_SUCCESS;
 }
