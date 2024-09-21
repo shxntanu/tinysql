@@ -212,41 +212,20 @@ struct Cursor_t {
 };
 typedef struct Cursor_t Cursor;
 
-Cursor *table_start(Table *table) {
-  Cursor *cursor = malloc(sizeof(Cursor));
-  cursor->table = table;
-  cursor->page_num = table->root_page_num;
-  cursor->cell_num = 0;
-
-  return cursor;
-}
-
-Cursor *table_end(Table *table) {
-  Cursor *cursor = malloc(sizeof(Cursor));
-  cursor->table = table;
-  cursor->page_num = table->root_page_num;
-
-  void *root_node = get_page(table->pager, table->root_page_num);
-  uint32_t num_cells = *leaf_node_num_cells(root_node);
-  cursor->cell_num = num_cells;
-  cursor->end_of_table = true;
-
-  return cursor;
-}
-
-void cursor_advance(Cursor *cursor) {
-  uint32_t page_num = cursor->page_num;
-  void *node = get_page(cursor->table->pager, page_num);
-
-  cursor->cell_num++;
-  if (cursor->cell_num >= *leaf_node_num_cells(node)) {
-    cursor->end_of_table = true;
-  }
+void print_constants() {
+  printf("ROW_SIZE: %d\n", ROW_SIZE);
+  printf("COMMON_NODE_HEADER_SIZE: %d\n", COMMON_NODE_HEADER_SIZE);
+  printf("LEAF_NODE_HEADER_SIZE: %d\n", LEAF_NODE_HEADER_SIZE);
+  printf("LEAF_NODE_CELL_SIZE: %d\n", LEAF_NODE_CELL_SIZE);
+  printf("LEAF_NODE_SPACE_FOR_CELLS: %d\n", LEAF_NODE_SPACE_FOR_CELLS);
+  printf("LEAF_NODE_MAX_CELLS: %d\n", LEAF_NODE_MAX_CELLS);
 }
 
 void print_row(Row *row) {
   printf("(%d, %s, %s)\n", row->id, row->username, row->email);
 }
+
+void print_prompt() { printf("tinysql > "); }
 
 void serialize_row(Row *source, void *destination) {
   memcpy(destination + ID_OFFSET, &(source->id), ID_SIZE);
@@ -334,6 +313,38 @@ Pager *pager_open(const char *filename) {
   return pager;
 }
 
+Cursor *table_start(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->page_num = table->root_page_num;
+  cursor->cell_num = 0;
+
+  return cursor;
+}
+
+Cursor *table_end(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->page_num = table->root_page_num;
+
+  void *root_node = get_page(table->pager, table->root_page_num);
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  cursor->cell_num = num_cells;
+  cursor->end_of_table = true;
+
+  return cursor;
+}
+
+void cursor_advance(Cursor *cursor) {
+  uint32_t page_num = cursor->page_num;
+  void *node = get_page(cursor->table->pager, page_num);
+
+  cursor->cell_num++;
+  if (cursor->cell_num >= *leaf_node_num_cells(node)) {
+    cursor->end_of_table = true;
+  }
+}
+
 /**
  * When we open the database for the first time, the database file will be
  * empty, so we initialize page 0 to be an empty leaf node (the root node)
@@ -362,8 +373,6 @@ InputBuffer *new_input_buffer() {
 
   return input_buffer;
 }
-
-void print_prompt() { printf("tinysql > "); }
 
 void read_input(InputBuffer *input_buffer) {
   ssize_t bytes_read =
@@ -473,6 +482,9 @@ MetaCommandResult do_meta_command(InputBuffer *input_buffer, Table *table) {
   if (strcmp(input_buffer->buffer, ".exit") == 0) {
     db_close(table);
     exit(EXIT_SUCCESS);
+  } else if (strcmp(input_buffer->buffer, ".constants") == 0) {
+    printf("Constants:\n");
+    print_constants();
   } else {
     return META_COMMAND_UNRECOGNIZED_COMMAND;
   }
