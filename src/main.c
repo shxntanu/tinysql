@@ -41,7 +41,6 @@ typedef enum NodeType_t NodeType;
 
 const uint32_t COLUMN_USERNAME_SIZE = 32;
 const uint32_t COLUMN_EMAIL_SIZE = 255;
-
 struct Row_t {
   uint32_t id;
   char username[COLUMN_USERNAME_SIZE + 1];
@@ -65,6 +64,34 @@ const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
 
 const uint32_t PAGE_SIZE = 4096;
 const uint32_t TABLE_MAX_PAGES = 100;
+
+struct Pager_t {
+  int file_descriptor;
+  uint32_t file_length;
+  uint32_t num_pages;
+  void *pages[TABLE_MAX_PAGES];
+};
+typedef struct Pager_t Pager;
+
+struct Table_t {
+  Pager *pager;
+  uint32_t root_page_num;
+};
+typedef struct Table_t Table;
+
+struct Cursor_t {
+  Table *table;
+  uint32_t page_num;
+  uint32_t cell_num;
+  bool end_of_table; // Indicates a position one past the last element
+};
+typedef struct Cursor_t Cursor;
+
+void print_row(Row *row) {
+  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+}
+
+void print_prompt() { printf("tinysql > "); }
 
 /**
  * Nodes need to store some metadata in a header at the beginning of the page.
@@ -190,28 +217,6 @@ void *leaf_node_value(void *node, uint32_t cell_num) {
  */
 void initialize_leaf_node(void *node) { *leaf_node_num_cells(node) = 0; }
 
-struct Pager_t {
-  int file_descriptor;
-  uint32_t file_length;
-  uint32_t num_pages;
-  void *pages[TABLE_MAX_PAGES];
-};
-typedef struct Pager_t Pager;
-
-struct Table_t {
-  Pager *pager;
-  uint32_t root_page_num;
-};
-typedef struct Table_t Table;
-
-struct Cursor_t {
-  Table *table;
-  uint32_t page_num;
-  uint32_t cell_num;
-  bool end_of_table; // Indicates a position one past the last element
-};
-typedef struct Cursor_t Cursor;
-
 void print_constants() {
   printf("ROW_SIZE: %d\n", ROW_SIZE);
   printf("COMMON_NODE_HEADER_SIZE: %d\n", COMMON_NODE_HEADER_SIZE);
@@ -221,11 +226,14 @@ void print_constants() {
   printf("LEAF_NODE_MAX_CELLS: %d\n", LEAF_NODE_MAX_CELLS);
 }
 
-void print_row(Row *row) {
-  printf("(%d, %s, %s)\n", row->id, row->username, row->email);
+void print_leaf_node(void *node) {
+  uint32_t num_cells = *leaf_node_num_cells(node);
+  printf("leaf (size %d)\n", num_cells);
+  for (uint32_t i = 0; i < num_cells; i++) {
+    uint32_t key = *(uint32_t*)leaf_node_key(node, i);
+    printf("  - %d : %d\n", i, key);
+  }
 }
-
-void print_prompt() { printf("tinysql > "); }
 
 void serialize_row(Row *source, void *destination) {
   memcpy(destination + ID_OFFSET, &(source->id), ID_SIZE);
@@ -275,10 +283,46 @@ void *get_page(Pager *pager, uint32_t page_num) {
   return pager->pages[page_num];
 }
 
+Cursor *table_start(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->page_num = table->root_page_num;
+  cursor->cell_num = 0;
+
+  void *root_node = get_page(table->pager, table->root_page_num);
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  cursor->end_of_table = (num_cells == 0);
+
+  return cursor;
+}
+
+Cursor *table_end(Table *table) {
+  Cursor *cursor = malloc(sizeof(Cursor));
+  cursor->table = table;
+  cursor->page_num = table->root_page_num;
+
+  void *root_node = get_page(table->pager, table->root_page_num);
+  uint32_t num_cells = *leaf_node_num_cells(root_node);
+  cursor->cell_num = num_cells;
+  cursor->end_of_table = true;
+
+  return cursor;
+}
+
 void *cursor_value(Cursor *cursor) {
   uint32_t page_num = cursor->page_num;
   void *page = get_page(cursor->table->pager, page_num);
-  return leaf_node_value(page, page_num);
+  return leaf_node_value(page, cursor->cell_num);
+}
+
+void cursor_advance(Cursor *cursor) {
+  uint32_t page_num = cursor->page_num;
+  void *node = get_page(cursor->table->pager, page_num);
+
+  cursor->cell_num += 1;
+  if (cursor->cell_num >= (*leaf_node_num_cells(node))) {
+    cursor->end_of_table = true;
+  }
 }
 
 Pager *pager_open(const char *filename) {
@@ -302,7 +346,7 @@ Pager *pager_open(const char *filename) {
   pager->num_pages = (file_length / PAGE_SIZE);
 
   if (file_length % PAGE_SIZE != 0) {
-    printf("DB file is not a whole number of pages. Corrupt file.\n");
+    printf("Db file is not a whole number of pages. Corrupt file.\n");
     exit(EXIT_FAILURE);
   }
 
@@ -313,51 +357,14 @@ Pager *pager_open(const char *filename) {
   return pager;
 }
 
-Cursor *table_start(Table *table) {
-  Cursor *cursor = malloc(sizeof(Cursor));
-  cursor->table = table;
-  cursor->page_num = table->root_page_num;
-  cursor->cell_num = 0;
-
-  return cursor;
-}
-
-Cursor *table_end(Table *table) {
-  Cursor *cursor = malloc(sizeof(Cursor));
-  cursor->table = table;
-  cursor->page_num = table->root_page_num;
-
-  void *root_node = get_page(table->pager, table->root_page_num);
-  uint32_t num_cells = *leaf_node_num_cells(root_node);
-  cursor->cell_num = num_cells;
-  cursor->end_of_table = true;
-
-  return cursor;
-}
-
-void cursor_advance(Cursor *cursor) {
-  uint32_t page_num = cursor->page_num;
-  void *node = get_page(cursor->table->pager, page_num);
-
-  cursor->cell_num++;
-  if (cursor->cell_num >= *leaf_node_num_cells(node)) {
-    cursor->end_of_table = true;
-  }
-}
-
-/**
- * When we open the database for the first time, the database file will be
- * empty, so we initialize page 0 to be an empty leaf node (the root node)
- */
 Table *db_open(const char *filename) {
   Pager *pager = pager_open(filename);
 
   Table *table = malloc(sizeof(Table));
   table->pager = pager;
-  table->root_page_num = 0;
 
   if (pager->num_pages == 0) {
-    // New database file. Initialize page 0 as leaf node.
+    // New database file. Initialze page 0 as leaf node.
     void *root_node = get_page(pager, 0);
     initialize_leaf_node(root_node);
   }
@@ -373,6 +380,8 @@ InputBuffer *new_input_buffer() {
 
   return input_buffer;
 }
+
+void print_prompt() { printf("db > "); }
 
 void read_input(InputBuffer *input_buffer) {
   ssize_t bytes_read =
@@ -437,54 +446,18 @@ void db_close(Table *table) {
   free(pager);
 }
 
-/**
- * Inserts a key-value pair into a leaf node of a B-tree.
- *
- * This function handles the insertion of a key-value pair into a leaf node.
- * If the node is full, it prints an error message and exits. Node splitting
- * is required but not implemented in this function.
- *
- * @param cursor A pointer to the Cursor structure, which indicates the position
- *               in the table where the insertion should occur.
- * @param key The key to be inserted into the leaf node.
- * @param value A pointer to the Row structure containing the value to be
- * inserted.
- */
-void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value) {
-  void *node = get_page(cursor->table->pager, cursor->page_num);
-
-  uint32_t num_cells = *leaf_node_num_cells(node);
-
-  // Node full
-  if (num_cells >= LEAF_NODE_MAX_CELLS) {
-    printf("Need to implement node splitting.\n");
-    exit(EXIT_FAILURE);
-  }
-
-  /**
-   * If the cursor's cell number is less than the current number of cells, it
-   * means the new cell needs to be inserted in the middle. We shift the
-   * existing cells to the right to make room for the new cell.
-   */
-  if (cursor->cell_num < num_cells) {
-    for (uint32_t i = num_cells; i > cursor->cell_num; i--) {
-      memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i - 1),
-             LEAF_NODE_CELL_SIZE);
-    }
-  }
-
-  *(leaf_node_num_cells(node)) += 1;
-  *((uint32_t *)leaf_node_key(node, cursor->cell_num)) = key;
-  serialize_row(value, leaf_node_value(node, cursor->cell_num));
-}
-
 MetaCommandResult do_meta_command(InputBuffer *input_buffer, Table *table) {
   if (strcmp(input_buffer->buffer, ".exit") == 0) {
     db_close(table);
     exit(EXIT_SUCCESS);
+  } else if (strcmp(input_buffer->buffer, ".btree") == 0) {
+    printf("Tree:\n");
+    print_leaf_node(get_page(table->pager, 0));
+    return META_COMMAND_SUCCESS;
   } else if (strcmp(input_buffer->buffer, ".constants") == 0) {
     printf("Constants:\n");
     print_constants();
+    return META_COMMAND_SUCCESS;
   } else {
     return META_COMMAND_UNRECOGNIZED_COMMAND;
   }
@@ -533,9 +506,50 @@ PrepareResult prepare_statement(InputBuffer *input_buffer,
   return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
+/**
+ * Inserts a key-value pair into a leaf node of a B-tree.
+ *
+ * This function handles the insertion of a key-value pair into a leaf node.
+ * If the node is full, it prints an error message and exits. Node splitting
+ * is required but not implemented in this function.
+ *
+ * @param cursor A pointer to the Cursor structure, which indicates the position
+ *               in the table where the insertion should occur.
+ * @param key The key to be inserted into the leaf node.
+ * @param value A pointer to the Row structure containing the value to be
+ * inserted.
+ */
+void leaf_node_insert(Cursor *cursor, uint32_t key, Row *value) {
+  void *node = get_page(cursor->table->pager, cursor->page_num);
+
+  uint32_t num_cells = *leaf_node_num_cells(node);
+
+  // Node full
+  if (num_cells >= LEAF_NODE_MAX_CELLS) {
+    printf("Need to implement node splitting.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /**
+   * If the cursor's cell number is less than the current number of cells, it
+   * means the new cell needs to be inserted in the middle. We shift the
+   * existing cells to the right to make room for the new cell.
+   */
+  if (cursor->cell_num < num_cells) {
+    for (uint32_t i = num_cells; i > cursor->cell_num; i--) {
+      memcpy(leaf_node_cell(node, i), leaf_node_cell(node, i - 1),
+             LEAF_NODE_CELL_SIZE);
+    }
+  }
+
+  *(leaf_node_num_cells(node)) += 1;
+  *((uint32_t *)leaf_node_key(node, cursor->cell_num)) = key;
+  serialize_row(value, leaf_node_value(node, cursor->cell_num));
+}
+
 ExecuteResult execute_insert(Statement *statement, Table *table) {
   void *node = get_page(table->pager, table->root_page_num);
-  if (*(leaf_node_num_cells(node)) >= LEAF_NODE_MAX_CELLS) {
+  if ((*leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS)) {
     return EXECUTE_TABLE_FULL;
   }
 
@@ -544,19 +558,23 @@ ExecuteResult execute_insert(Statement *statement, Table *table) {
 
   leaf_node_insert(cursor, row_to_insert->id, row_to_insert);
 
+  free(cursor);
+
   return EXECUTE_SUCCESS;
 }
 
 ExecuteResult execute_select(Statement *statement, Table *table) {
   Cursor *cursor = table_start(table);
-  Row *row;
+
+  Row row;
   while (!(cursor->end_of_table)) {
-    deserialize_row(cursor_value(table), &row);
+    deserialize_row(cursor_value(cursor), &row);
     print_row(&row);
     cursor_advance(cursor);
   }
 
   free(cursor);
+
   return EXECUTE_SUCCESS;
 }
 
