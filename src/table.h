@@ -13,4 +13,4 @@ typedef struct Table_t Table;
 Table *db_open(const char *filename);
 void db_close(Table *table);
 
-#endif TABLE_H
+#endif // TABLE_H

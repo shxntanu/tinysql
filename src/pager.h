@@ -21,4 +21,4 @@ void *get_page(Pager *pager, uint32_t page_num);
 Pager *pager_open(const char *filename);
 void pager_flush(Pager *pager, uint32_t page_num);
 
-#endif PAGER_H
+#endif // PAGER_H

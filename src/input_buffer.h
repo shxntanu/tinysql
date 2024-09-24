@@ -16,4 +16,4 @@ InputBuffer *new_input_buffer();
 void read_input(InputBuffer *input_buffer);
 void print_prompt();
 
-#endif INPUT_BUFFER_H
+#endif // INPUT_BUFFER_H
