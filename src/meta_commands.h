@@ -26,4 +26,4 @@ MetaCommandResult do_meta_command(InputBuffer *input_buffer, Table *table) {
   }
 }
 
-#endif 
+#endif // META_COMMANDS_H
