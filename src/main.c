@@ -91,8 +91,6 @@ void print_row(Row *row) {
   printf("(%d, %s, %s)\n", row->id, row->username, row->email);
 }
 
-void print_prompt() { printf("tinysql > "); }
-
 /**
  * Nodes need to store some metadata in a header at the beginning of the page.
  * Every node will store what type of node it is, whether or not it is the root
