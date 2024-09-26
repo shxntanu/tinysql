@@ -1,3 +1,5 @@
+![](/assets/github-header-image.png)
+
 # tinySQL
 
 Writing an SQLite clone from scratch in C. This project was heavily inspired from [cstack](https://github.com/cstack)'s amazing [guide](https://cstack.github.io/db_tutorial/) on writing an SQL Database in C, and aims to build on top of it by extending its functionality to make it as close to SQLite as possble.
