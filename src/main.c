@@ -9,6 +9,11 @@
 
 #define size_of_attribute(Struct, Attribute) sizeof(((Struct *)0)->Attribute)
 
+#define COLUMN_USERNAME_SIZE 32
+#define COLUMN_EMAIL_SIZE 255
+#define PAGE_SIZE 4096
+#define TABLE_MAX_PAGES 100
+
 struct InputBuffer_t {
   char *buffer;
   size_t buffer_length;
@@ -44,8 +49,6 @@ typedef enum StatementType_t StatementType;
 enum NodeType_t { NODE_INTERNAL, NODE_LEAF };
 typedef enum NodeType_t NodeType;
 
-#define COLUMN_USERNAME_SIZE 32
-#define COLUMN_EMAIL_SIZE 255
 struct Row_t {
   uint32_t id;
   char username[COLUMN_USERNAME_SIZE + 1];
@@ -66,9 +69,6 @@ const uint32_t ID_OFFSET = 0;
 const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
 const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
 const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
-
-const uint32_t PAGE_SIZE = 4096;
-#define TABLE_MAX_PAGES 100
 
 struct Pager_t {
   int file_descriptor;
@@ -313,28 +313,6 @@ Cursor *table_start(Table *table) {
 }
 
 /**
- * Return the position of the given key.
- * If the key is not present, return the position
- * where it should be inserted
- *
- * @param table the table to be searched
- * @param key the key that needs to be searched
- *
- * @return A pointer to the cursor at the given position
- */
-Cursor *table_find(Table *table, uint32_t key) {
-  uint32_t root_page_num = table->root_page_num;
-  void *root_node = get_page(table->pager, root_page_num);
-
-  if (get_node_type(root_node) == NODE_LEAF) {
-    return leaf_node_find(table, root_page_num, key);
-  } else {
-    printf("Need to implement searching an internal node...\n");
-    exit(EXIT_FAILURE);
-  }
-}
-
-/**
  * Uses binary search to search for a given key. If a given key is not found, it
  * returns position after which the key needs to be inserted
  *
@@ -372,6 +350,28 @@ Cursor *leaf_node_find(Table *table, uint32_t page_num, uint32_t key) {
   // return one position before where the key needs to be inserted
   cursor->cell_num = min_index;
   return cursor;
+}
+
+/**
+ * Return the position of the given key.
+ * If the key is not present, return the position
+ * where it should be inserted
+ *
+ * @param table the table to be searched
+ * @param key the key that needs to be searched
+ *
+ * @return A pointer to the cursor at the given position
+ */
+Cursor *table_find(Table *table, uint32_t key) {
+  uint32_t root_page_num = table->root_page_num;
+  void *root_node = get_page(table->pager, root_page_num);
+
+  if (get_node_type(root_node) == NODE_LEAF) {
+    return leaf_node_find(table, root_page_num, key);
+  } else {
+    printf("Need to implement searching an internal node...\n");
+    exit(EXIT_FAILURE);
+  }
 }
 
 void *cursor_value(Cursor *cursor) {
