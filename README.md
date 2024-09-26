@@ -8,6 +8,8 @@ This project is unfinished and in active development. Pull requests, suggestions
 
 ![sqlite architecture](https://cstack.github.io/db_tutorial/assets/images/arch2.gif)
 
+*sqlite architecture (https://www.sqlite.org/arch.html)*
+
 A query goes through a chain of components in order to retrieve or modify data. The _front-end_ consists of the:
 
 1. tokenizer
