@@ -1,4 +1,3 @@
-![](/assets/github-header-image.png)
 
 # tinySQL
 
