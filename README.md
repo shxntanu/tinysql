@@ -25,6 +25,11 @@ The _back-end_ consists of the:
 3. pager
 4. os interface
 
+## Installing
+
+1. macOS: Install CMake using Homebrew
+2. Linux (Ubuntu): Follow [this](https://vpsie.com/knowledge-base/how-to-install-cmake-on-ubuntu-20-04/) guide. Make sure to download the latest version of CMake.
+
 ## Building and Executing
 
 Make sure you have CMake installed. Clone the repository.
