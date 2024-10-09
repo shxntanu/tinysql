@@ -4,8 +4,8 @@
 /CMakeFiles
 
 tinysql
+.cache
 
 CMakeCache.txt
 cmake_install.cmake
-Makefile
 *.db
