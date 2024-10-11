@@ -239,6 +239,10 @@ void *leaf_node_value(void *node, uint32_t cell_num) {
   return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
+uint32_t *leaf_node_next_leaf(void *node) {
+  return (uint32_t *)(node + LEAF_NODE_NEXT_LEAF_OFFSET);
+}
+
 /**
  * Initializes a leaf node by setting the number of cells to 0.
  *
@@ -251,6 +255,7 @@ void initialize_leaf_node(void *node) {
   set_node_type(node, NODE_LEAF);
   set_node_root(node, false);
   *leaf_node_num_cells(node) = 0;
+  *leaf_node_next_leaf(node) = 0; // 0 represents no sibling
 }
 
 /*
@@ -588,7 +593,7 @@ InputBuffer *new_input_buffer() {
   return input_buffer;
 }
 
-void print_prompt() { printf("db > "); }
+void print_prompt() { printf("tinysql > "); }
 
 void read_input(InputBuffer *input_buffer) {
   ssize_t bytes_read =
@@ -754,6 +759,12 @@ void leaf_node_split_and_insert(Cursor *cursor, uint32_t key, Row *value) {
   uint32_t new_page_num = get_unused_page_num(cursor->table->pager);
   void *new_node = get_page(cursor->table->pager, new_page_num);
   initialize_leaf_node(new_node);
+
+  /** Whenever we split a leaf node, update the sibling pointers. The old leaf’s
+   * sibling becomes the new leaf, and the new leaf’s sibling becomes whatever
+   * used to be the old leaf’s sibling. */
+  *leaf_node_next_leaf(new_node) = *leaf_node_next_leaf(old_node);
+  *leaf_node_next_leaf(old_node) = new_page_num;
 
   for (int32_t i = LEAF_NODE_MAX_CELLS; i >= 0; i--) {
     void *destination_node;

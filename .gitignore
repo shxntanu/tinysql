@@ -3,6 +3,8 @@
 /build
 /CMakeFiles
 
+__pycache__
+
 tinysql
 .cache
 
