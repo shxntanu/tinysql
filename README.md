@@ -8,7 +8,7 @@ Writing an SQLite clone from scratch in C. This project was heavily inspired fro
 
 ![sqlite architecture](https://cstack.github.io/db_tutorial/assets/images/arch2.gif)
 
-*sqlite architecture (https://www.sqlite.org/arch.html)*
+_sqlite architecture (https://www.sqlite.org/arch.html)_
 
 A query goes through a chain of components in order to retrieve or modify data. The _front-end_ consists of the:
 
@@ -30,19 +30,28 @@ The _back-end_ consists of the:
 1. macOS: Install CMake using Homebrew
 2. Linux (Ubuntu): Follow [this](https://vpsie.com/knowledge-base/how-to-install-cmake-on-ubuntu-20-04/) guide. Make sure to download the latest version of CMake.
 
-## Building and Executing
+## Try it for yourself
 
-Make sure you have CMake installed. Clone the repository.
+### Build
 
-Run CMake
+Run `make`, this will build the binary, then run `./tinysql mydb.db` to start.
+
+### Test
+
+- Run all tests at once by running
 
 ```bash
-cmake .
+python -m unittest discover
 ```
 
-Build and run the binary.
+- To run a specific test (e.g.):
 
 ```bash
-make
-./tinysql mydb.db
+python -m unittest test.test_insert
+```
+
+- To run a specific test case (e.g.):
+
+```bash
+python -m unittest test.test_insert.TestInsert.test_persistence
 ```
