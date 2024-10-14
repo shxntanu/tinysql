@@ -11,11 +11,6 @@ class BaseTest(unittest.TestCase):
         if os.path.exists(db_file):
             os.remove(db_file)
 
-    # def tearDown(self) -> None:
-    #     db_file = "mydb.db"
-    #     if os.path.exists(db_file):
-    #         os.remove(db_file)
-
     def run_repl(self, input_data):
         """Runs the REPL binary with the provided input and returns the output."""
 
@@ -48,6 +43,7 @@ class BaseTest(unittest.TestCase):
             expected_output = "\n".join(expected_output)
 
         # Strip both actual and expected output to avoid differences due to trailing newlines or spaces
+        self.maxDiff = None
         self.assertEqual(actual_output.strip(), expected_output.strip())
 
     def assert_error_output(self, input_data, expected_error_output):
