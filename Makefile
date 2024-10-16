@@ -1,5 +1,5 @@
 db: src/main.c
-	gcc src/main.c -o tinysql
+	gcc src/*.c -o tinysql
 
 run: tinysql
 	./tinysql mydb.db
