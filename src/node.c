@@ -119,34 +119,6 @@ void initialize_leaf_node(void *node) {
   *leaf_node_next_leaf(node) = 0; // 0 represents no sibling
 }
 
-/*
- * Internal Node Header Layout
- *
- * -------------------------------------------------------
- * | Common Node  |  Number of keys  |  Right child      |
- * |    Header    |     (uint32)     |  pointer (uint32) |
- * -------------------------------------------------------
- */
-const uint32_t INTERNAL_NODE_NUM_KEYS_SIZE = sizeof(uint32_t);
-const uint32_t INTERNAL_NODE_NUM_KEYS_OFFSET = COMMON_NODE_HEADER_SIZE;
-const uint32_t INTERNAL_NODE_RIGHT_CHILD_SIZE = sizeof(uint32_t);
-const uint32_t INTERNAL_NODE_RIGHT_CHILD_OFFSET =
-    INTERNAL_NODE_NUM_KEYS_OFFSET + INTERNAL_NODE_NUM_KEYS_SIZE;
-const uint32_t INTERNAL_NODE_HEADER_SIZE = COMMON_NODE_HEADER_SIZE +
-                                           INTERNAL_NODE_NUM_KEYS_SIZE +
-                                           INTERNAL_NODE_RIGHT_CHILD_SIZE;
-
-/*
- * Internal Node Body Layout
- */
-const uint32_t INTERNAL_NODE_KEY_SIZE = sizeof(uint32_t);
-const uint32_t INTERNAL_NODE_CHILD_SIZE = sizeof(uint32_t);
-const uint32_t INTERNAL_NODE_CELL_SIZE =
-    INTERNAL_NODE_CHILD_SIZE + INTERNAL_NODE_KEY_SIZE;
-
-/* Keep this small for testing */
-const uint32_t INTERNAL_NODE_MAX_CELLS = 3;
-
 uint32_t *internal_node_num_keys(void *node) {
   return node + INTERNAL_NODE_NUM_KEYS_OFFSET;
 }

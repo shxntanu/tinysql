@@ -130,6 +130,34 @@ static const uint32_t LEAF_NODE_HEADER_SIZE = COMMON_NODE_HEADER_SIZE +
                                               LEAF_NODE_NUM_CELLS_SIZE +
                                               LEAF_NODE_NEXT_LEAF_SIZE;
 
+/*
+ * Internal Node Header Layout
+ *
+ * -------------------------------------------------------
+ * | Common Node  |  Number of keys  |  Right child      |
+ * |    Header    |     (uint32)     |  pointer (uint32) |
+ * -------------------------------------------------------
+ */
+static const uint32_t INTERNAL_NODE_NUM_KEYS_SIZE = sizeof(uint32_t);
+static const uint32_t INTERNAL_NODE_NUM_KEYS_OFFSET = COMMON_NODE_HEADER_SIZE;
+static const uint32_t INTERNAL_NODE_RIGHT_CHILD_SIZE = sizeof(uint32_t);
+static const uint32_t INTERNAL_NODE_RIGHT_CHILD_OFFSET =
+    INTERNAL_NODE_NUM_KEYS_OFFSET + INTERNAL_NODE_NUM_KEYS_SIZE;
+static const uint32_t INTERNAL_NODE_HEADER_SIZE =
+    COMMON_NODE_HEADER_SIZE + INTERNAL_NODE_NUM_KEYS_SIZE +
+    INTERNAL_NODE_RIGHT_CHILD_SIZE;
+
+/*
+ * Internal Node Body Layout
+ */
+static const uint32_t INTERNAL_NODE_KEY_SIZE = sizeof(uint32_t);
+static const uint32_t INTERNAL_NODE_CHILD_SIZE = sizeof(uint32_t);
+static const uint32_t INTERNAL_NODE_CELL_SIZE =
+    INTERNAL_NODE_CHILD_SIZE + INTERNAL_NODE_KEY_SIZE;
+
+/* Keep this small for testing */
+static const uint32_t INTERNAL_NODE_MAX_CELLS = 3;
+
 /**
  * The body of a leaf node is an array of cells. Each cell is a key followed by
  * a value (a serialized row).
